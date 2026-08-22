@@ -35,26 +35,22 @@
             { name: "高級Sniper", cost: 3000, dmg: 250, range: 250, cd: 400, color: "gold" }
         ];
 
-        // 1秒ごとのタイマーと難易度更新
+        // 1秒ごとのタイマー＆120秒ごとのボス処理
         setInterval(() => {
             gameSeconds++;
             document.getElementById('timer').textContent = gameSeconds;
             if (gameSeconds % 120 === 0) {
-                enemyLevel *= 1.5; // 難易度1.5倍
+                enemyLevel *= 1.5;
                 enemies.push({x:0, y:100, pathIdx:0, hp: 600 * enemyLevel, speed: 0.8, isBoss: true});
             }
         }, 1000);
 
-        // 敵生成
-        function spawn() {
-            if (Math.random() < 0.03) {
-                enemies.push({x:0, y:100, pathIdx:0, hp: 30 * enemyLevel, speed: 1.5, isBoss: false});
-            }
-            setTimeout(spawn, 1000);
-        }
-        spawn();
+        // 1.5秒ごとに敵を生成
+        setInterval(() => {
+            enemies.push({x:0, y:100, pathIdx:0, hp: 30 * enemyLevel, speed: 1.5, isBoss: false});
+        }, 1500);
 
-        // メニュー生成
+        // UI生成
         const menu = document.getElementById('menu');
         types.forEach((t, i) => {
             let b = document.createElement('button');
@@ -69,7 +65,6 @@
             ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
             path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
-            // 弾と敵の更新
             bullets.forEach((b, i) => {
                 ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
                 b.x += (b.tx - b.x) * 0.2; b.y += (b.ty - b.y) * 0.2;
@@ -88,7 +83,6 @@
                 ctx.beginPath(); ctx.arc(en.x, en.y, en.isBoss ? 15 : 8, 0, Math.PI*2); ctx.fill();
             });
 
-            // タワー攻撃
             towers.forEach(t => {
                 let type = types[t.type];
                 ctx.fillStyle = type.color; ctx.beginPath(); ctx.arc(t.x, t.y, 12, 0, Math.PI*2); ctx.fill();
