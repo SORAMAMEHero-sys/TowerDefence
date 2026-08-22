@@ -13,7 +13,7 @@
 </head>
 <body>
     <h1>🛡️ 防衛戦 🛡️</h1>
-    <div>金:<span id="money">150</span> | 命:<span id="life">5</span> | タワー:<span id="count">0</span>/30 | 時間:<span id="timer">0</span>秒</div>
+    <div>金:<span id="money">150</span> | 命:<span id="life">5</span> | タワー:<span id="count">0</span>/30</div>
     <div class="menu" id="menu"></div>
     <canvas id="gameCanvas" width="600" height="400"></canvas>
 
@@ -22,79 +22,89 @@
         const ctx = canvas.getContext('2d');
         const path = [{x:0,y:100},{x:200,y:100},{x:200,y:300},{x:400,y:300},{x:400,y:100},{x:600,y:100}];
         
-        let money = 150, life = 5, towers = [], enemies = [], gameSeconds = 0, selected = 0;
+        let money = 150, life = 5, towers = [], enemies = [], selected = 0;
         const types = [
-            { name: "マシンガン", cost: 40, damage: 8, range: 70, color: "cyan" },
-            { name: "スナイパー", cost: 80, damage: 45, range: 150, color: "orange" },
-            { name: "アイス", cost: 60, damage: 5, range: 80, color: "blue" },
-            { name: "ボム", cost: 100, damage: 30, range: 90, color: "red" },
-            { name: "フリーズ", cost: 200, damage: 0, range: 100, color: "white" },
-            { name: "高級MG", cost: 3000, damage: 8, range: 80, color: "cyan" },
-            { name: "高級Sniper", cost: 3000, damage: 250, range: 200, color: "gold" }
+            { name: "マシンガン", cost: 40, dmg: 8, range: 70, cd: 15, color: "cyan" },
+            { name: "スナイパー", cost: 80, dmg: 45, range: 150, cd: 60, color: "orange" },
+            { name: "アイス", cost: 60, dmg: 2, range: 80, cd: 30, color: "blue", slow: true },
+            { name: "ボム", cost: 100, dmg: 30, range: 90, cd: 50, color: "red" }
         ];
 
-        // メニュー生成
+        // 敵の生成
+        function spawn() {
+            if (Math.random() < 0.03) {
+                enemies.push({x:0, y:100, pathIdx:0, hp:30, speed:1.5, slow:0});
+            }
+            setTimeout(spawn, 1000);
+        }
+        spawn();
+
+        // メニュー
         const menu = document.getElementById('menu');
         types.forEach((t, i) => {
             let b = document.createElement('button');
-            b.textContent = t.name;
+            b.textContent = `${t.name}(${t.cost}G)`;
             b.onclick = () => { selected = i; document.querySelectorAll('button').forEach(btn => btn.classList.remove('selected')); b.classList.add('selected'); };
             menu.appendChild(b);
         });
 
-        // 敵クラス
-        class Enemy {
-            constructor(isBoss) {
-                this.x = 0; this.y = 100; this.pathIdx = 0;
-                this.hp = isBoss ? 600 : 30;
-                this.speed = isBoss ? 0.8 : 1.5;
-                this.isBoss = isBoss;
-            }
-            update() {
-                let p = path[this.pathIdx + 1];
-                if (!p) return true;
-                let dx = p.x - this.x, dy = p.y - this.y, dist = Math.sqrt(dx*dx + dy*dy);
-                if (dist < this.speed) this.pathIdx++;
-                else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
-                return false;
-            }
-        }
-
-        function gameLoop() {
-            ctx.clearRect(0, 0, 600, 400);
+        function loop() {
+            ctx.clearRect(0,0,600,400);
             // 道
             ctx.strokeStyle = '#555'; ctx.lineWidth = 40;
             ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
             path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
-            
-            // 敵生成・移動
-            if (Math.random() < 0.02) enemies.push(new Enemy(Math.random() < 0.05));
+
+            // 敵処理
             enemies.forEach((en, i) => {
-                if (en.update()) { life--; enemies.splice(i, 1); }
-                ctx.fillStyle = en.isBoss ? 'purple' : 'red';
-                ctx.beginPath(); ctx.arc(en.x, en.y, 10, 0, Math.PI*2); ctx.fill();
+                let p = path[en.pathIdx + 1];
+                let dx = p.x - en.x, dy = p.y - en.y, dist = Math.sqrt(dx*dx+dy*dy);
+                let spd = en.slow > 0 ? en.speed/2 : en.speed;
+                if(en.slow > 0) en.slow--;
+                
+                if(dist < spd) {
+                    en.pathIdx++;
+                    if(en.pathIdx >= path.length-1) { life--; enemies.splice(i, 1); document.getElementById('life').textContent = life; }
+                } else { en.x += (dx/dist)*spd; en.y += (dy/dist)*spd; }
+                
+                ctx.fillStyle = 'red';
+                ctx.beginPath(); ctx.arc(en.x, en.y, 8, 0, Math.PI*2); ctx.fill();
             });
 
-            // タワー
+            // 攻撃処理
             towers.forEach(t => {
-                ctx.fillStyle = types[t.type].color;
-                ctx.beginPath(); ctx.arc(t.x, t.y, 15, 0, Math.PI*2); ctx.fill();
+                let type = types[t.type];
+                ctx.fillStyle = type.color;
+                ctx.beginPath(); ctx.arc(t.x, t.y, 12, 0, Math.PI*2); ctx.fill();
+                
+                if (t.cd > 0) t.cd--;
+                else {
+                    let target = enemies.find(en => Math.hypot(en.x-t.x, en.y-t.y) < type.range);
+                    if(target) {
+                        target.hp -= type.dmg;
+                        if(type.slow) target.slow = 30;
+                        t.cd = type.cd;
+                        if(target.hp <= 0) { money += 20; enemies.splice(enemies.indexOf(target), 1); document.getElementById('money').textContent = money; }
+                    }
+                }
             });
-            requestAnimationFrame(gameLoop);
+
+            if(life <= 0) { alert("ゲームオーバー！"); location.reload(); }
+            requestAnimationFrame(loop);
         }
 
         canvas.onclick = (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left, y = e.clientY - rect.top;
             if(money >= types[selected].cost) {
-                towers.push({x, y, type: selected});
+                towers.push({x, y, type: selected, cd: 0});
                 money -= types[selected].cost;
                 document.getElementById('money').textContent = money;
+                document.getElementById('count').textContent = towers.length;
             }
         };
 
-        setInterval(() => { gameSeconds++; document.getElementById('timer').textContent = gameSeconds; }, 1000);
-        gameLoop();
+        loop();
     </script>
 </body>
 </html>
