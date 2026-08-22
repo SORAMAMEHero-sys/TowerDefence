@@ -13,7 +13,7 @@
 </head>
 <body>
     <h1>🛡️ 防衛戦 🛡️</h1>
-    <div>金:<span id="money">150</span> | 命:<span id="life">5</span> | タワー:<span id="count">0</span>/30</div>
+    <div>金:<span id="money">150</span> | ライフ:<span id="life">5</span> | タワー:<span id="count">0</span>/30</div>
     <div class="menu" id="menu"></div>
     <canvas id="gameCanvas" width="600" height="400"></canvas>
 
@@ -22,24 +22,18 @@
         const ctx = canvas.getContext('2d');
         const path = [{x:0,y:100},{x:200,y:100},{x:200,y:300},{x:400,y:300},{x:400,y:100},{x:600,y:100}];
         
-        let money = 150, life = 5, towers = [], enemies = [], selected = 0;
+        let money = 150, life = 5, towers = [], enemies = [], bullets = [], selected = 0;
         const types = [
             { name: "マシンガン", cost: 40, dmg: 8, range: 70, cd: 15, color: "cyan" },
             { name: "スナイパー", cost: 80, dmg: 45, range: 150, cd: 60, color: "orange" },
             { name: "アイス", cost: 60, dmg: 2, range: 80, cd: 30, color: "blue", slow: true },
-            { name: "ボム", cost: 100, dmg: 30, range: 90, cd: 50, color: "red" }
+            { name: "ボム", cost: 100, dmg: 30, range: 90, cd: 50, color: "red" },
+            { name: "フリーズ", cost: 200, dmg: 0, range: 100, cd: 300, color: "white" },
+            { name: "高級MG", cost: 3000, dmg: 20, range: 100, cd: 5, color: "cyan" },
+            { name: "高級Sniper", cost: 3000, dmg: 250, range: 250, cd: 400, color: "gold" }
         ];
 
-        // 敵の生成
-        function spawn() {
-            if (Math.random() < 0.03) {
-                enemies.push({x:0, y:100, pathIdx:0, hp:30, speed:1.5, slow:0});
-            }
-            setTimeout(spawn, 1000);
-        }
-        spawn();
-
-        // メニュー
+        // UI生成
         const menu = document.getElementById('menu');
         types.forEach((t, i) => {
             let b = document.createElement('button');
@@ -48,6 +42,12 @@
             menu.appendChild(b);
         });
 
+        function spawn() {
+            if (Math.random() < 0.03) enemies.push({x:0, y:100, pathIdx:0, hp:30, speed:1.5, slow:0});
+            setTimeout(spawn, 1000);
+        }
+        spawn();
+
         function loop() {
             ctx.clearRect(0,0,600,400);
             // 道
@@ -55,40 +55,40 @@
             ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
             path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
-            // 敵処理
+            // 弾の描画と移動
+            bullets.forEach((b, i) => {
+                ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
+                b.x += (b.tx - b.x) * 0.2; b.y += (b.ty - b.y) * 0.2;
+                if(Math.hypot(b.x-b.tx, b.y-b.ty) < 5) bullets.splice(i, 1);
+            });
+
+            // 敵
             enemies.forEach((en, i) => {
                 let p = path[en.pathIdx + 1];
                 let dx = p.x - en.x, dy = p.y - en.y, dist = Math.sqrt(dx*dx+dy*dy);
                 let spd = en.slow > 0 ? en.speed/2 : en.speed;
                 if(en.slow > 0) en.slow--;
-                
                 if(dist < spd) {
                     en.pathIdx++;
                     if(en.pathIdx >= path.length-1) { life--; enemies.splice(i, 1); document.getElementById('life').textContent = life; }
                 } else { en.x += (dx/dist)*spd; en.y += (dy/dist)*spd; }
-                
-                ctx.fillStyle = 'red';
-                ctx.beginPath(); ctx.arc(en.x, en.y, 8, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(en.x, en.y, 8, 0, Math.PI*2); ctx.fill();
             });
 
-            // 攻撃処理
+            // タワー＆攻撃
             towers.forEach(t => {
                 let type = types[t.type];
-                ctx.fillStyle = type.color;
-                ctx.beginPath(); ctx.arc(t.x, t.y, 12, 0, Math.PI*2); ctx.fill();
-                
+                ctx.fillStyle = type.color; ctx.beginPath(); ctx.arc(t.x, t.y, 12, 0, Math.PI*2); ctx.fill();
                 if (t.cd > 0) t.cd--;
                 else {
                     let target = enemies.find(en => Math.hypot(en.x-t.x, en.y-t.y) < type.range);
                     if(target) {
-                        target.hp -= type.dmg;
-                        if(type.slow) target.slow = 30;
-                        t.cd = type.cd;
+                        bullets.push({x: t.x, y: t.y, tx: target.x, ty: target.y});
+                        target.hp -= type.dmg; if(type.slow) target.slow = 30; t.cd = type.cd;
                         if(target.hp <= 0) { money += 20; enemies.splice(enemies.indexOf(target), 1); document.getElementById('money').textContent = money; }
                     }
                 }
             });
-
             if(life <= 0) { alert("ゲームオーバー！"); location.reload(); }
             requestAnimationFrame(loop);
         }
@@ -100,10 +100,8 @@
                 towers.push({x, y, type: selected, cd: 0});
                 money -= types[selected].cost;
                 document.getElementById('money').textContent = money;
-                document.getElementById('count').textContent = towers.length;
             }
         };
-
         loop();
     </script>
 </body>
