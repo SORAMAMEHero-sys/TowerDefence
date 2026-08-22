@@ -4,149 +4,77 @@
     <meta charset="UTF-8">
     <title>本格タワーディフェンス</title>
     <style>
-        body { text-align: center; background-color: #222; color: white; font-family: sans-serif; margin: 10px; }
-        canvas { background-color: #333; border: 2px solid #fff; cursor: pointer; max-width: 100%; height: auto; }
-        .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 8px 0; }
-        button { padding: 8px 5px; font-size: 11px; cursor: pointer; background-color: #444; color: white; border: 1px solid #777; border-radius: 4px; }
-        button.selected { background-color: #00bcd4; color: black; font-weight: bold; }
-        button.sell-mode { background-color: #ff5722; color: white; }
+        body { text-align: center; background-color: #222; color: white; font-family: sans-serif; }
+        canvas { background-color: #333; border: 2px solid #fff; cursor: crosshair; }
+        .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 10px auto; max-width: 600px; }
+        button { padding: 10px; font-size: 12px; cursor: pointer; }
     </style>
 </head>
 <body>
-
-    <h1>🛡️ TD 最終完全版 🛡️</h1>
-    <div class="info">金:<span id="money">150</span>G | 命:<span id="life">5</span> | タワー:<span id="towerCount">0</span>/30 | 時間:<span id="timer">0</span>秒</div>
-    <div id="saveMsg" style="color: lightgreen; font-size: 12px; height: 15px;"></div>
-
-    <div class="menu">
-        <button id="btn-0" onclick="selectTower(0)" class="selected">MG(40)</button>
-        <button id="btn-1" onclick="selectTower(1)">Sniper(80)</button>
-        <button id="btn-2" onclick="selectTower(2)">Ice(60)</button>
-        <button id="btn-3" onclick="selectTower(3)">Bomb(100)</button>
-        <button id="btn-4" onclick="selectTower(4)">フリーズ(200)</button>
-        <button id="btn-5" onclick="selectTower(5)">高級MG(3k)</button>
-        <button id="btn-6" onclick="selectTower(6)">高級Sniper(3k)</button>
-        <button id="btn-sell" onclick="selectSellMode()" class="sell-mode">🗑️ 売却</button>
-    </div>
-
-    <button id="pauseBtn" onclick="togglePause()">⏸️ 一時停止</button>
+    <h1>🛡️ 防衛戦 🛡️</h1>
+    <div id="info">金: <span id="money">150</span> | ライフ: <span id="life">5</span></div>
+    <div class="menu" id="menu"></div>
     <canvas id="gameCanvas" width="600" height="400"></canvas>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-
-        let money = parseInt(localStorage.getItem('td_money') || 150);
-        let life = parseInt(localStorage.getItem('td_life') || 5);
-        let gameSeconds = parseInt(localStorage.getItem('td_seconds') || 0);
-        let towers = JSON.parse(localStorage.getItem('td_towers') || '[]');
-        let isPaused = false, selectedTowerType = 0, isSellMode = false;
-
-        const towerTypes = [
-            { name: "マシンガン", cost: 40, range: 70, damage: 8, cooldownMax: 15, color: "cyan" },
-            { name: "スナイパー", cost: 80, range: 150, damage: 45, cooldownMax: 60, color: "orange" },
-            { name: "アイス", cost: 60, range: 80, damage: 5, cooldownMax: 30, color: "blue", slow: true },
-            { name: "ボム", cost: 100, range: 90, damage: 30, cooldownMax: 50, color: "red", splash: true },
-            { name: "フリーズ", cost: 200, range: 100, damage: 0, cooldownMax: 300, color: "white", freeze: true },
-            { name: "高級MG", cost: 3000, range: 80, damage: 8, cooldownMax: 4.5, color: "cyan" },
-            { name: "高級Sniper", cost: 3000, range: 200, damage: 250, cooldownMax: 420, color: "gold" }
+        const path = [{x:0,y:100},{x:200,y:100},{x:200,y:300},{x:400,y:300},{x:400,y:100},{x:600,y:100}];
+        
+        let money = 150, life = 5, towers = [];
+        const types = [
+            { name: "マシンガン", cost: 40, color: "cyan" },
+            { name: "スナイパー", cost: 80, color: "orange" },
+            { name: "アイス", cost: 60, color: "blue" },
+            { name: "ボム", cost: 100, color: "red" }
         ];
 
-        const path = [{x:0,y:100},{x:200,y:100},{x:200,y:300},{x:400,y:300},{x:400,y:100},{x:600,y:100}];
-        let enemies = [], spawnTimer = 0, bossLevel = 0, enemyLevel = 0;
-
-        class Enemy {
-            constructor(isBoss = false, level = 0) {
-                this.x = path[0].x; this.y = path[0].y; this.pathIndex = 0;
-                this.isBoss = isBoss;
-                if (isBoss) {
-                    this.speed = 0.8; this.hp = 600 + (level * 400); this.radius = 20;
-                } else {
-                    this.speed = 1.5 * Math.pow(1.5, enemyLevel);
-                    this.hp = 30 * Math.pow(1.5, enemyLevel); this.radius = 10;
-                }
-                this.maxHp = this.hp; this.slowTimer = 0; this.freezeTimer = 0;
-            }
-            update() {
-                if (this.freezeTimer > 0) { this.freezeTimer--; return false; }
-                let spd = (this.slowTimer > 0) ? this.speed * 0.5 : this.speed;
-                if (this.slowTimer > 0) this.slowTimer--;
-                let target = path[this.pathIndex + 1];
-                if (!target) return true;
-                let dx = target.x - this.x, dy = target.y - this.y, dist = Math.sqrt(dx*dx+dy*dy);
-                if (dist < spd) { this.pathIndex++; } else { this.x += (dx/dist)*spd; this.y += (dy/dist)*spd; }
-                return false;
-            }
-        }
-
-        function selectTower(idx) { isSellMode = false; selectedTowerType = idx; }
-        function selectSellMode() { isSellMode = true; }
-        function togglePause() { isPaused = !isPaused; }
-        function updateUI() {
-            document.getElementById('money').textContent = money;
-            document.getElementById('life').textContent = life;
-            document.getElementById('timer').textContent = gameSeconds;
-            document.getElementById('towerCount').textContent = towers.length;
-        }
-
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left, y = e.clientY - rect.top;
-            if (isSellMode) {
-                let idx = towers.findIndex(t => Math.sqrt((t.x-x)**2 + (t.y-y)**2) < 20);
-                if (idx !== -1 && confirm("売却しますか？")) {
-                    money += Math.floor(towerTypes[towers[idx].typeIndex].cost / 2);
-                    towers.splice(idx, 1); updateUI();
-                }
-            } else {
-                let type = towerTypes[selectedTowerType];
-                if (type.freeze && towers.filter(t => t.typeIndex === 4).length >= 3) { alert("フリーズは3つまで！"); return; }
-                if (money >= type.cost && towers.length < 30) {
-                    towers.push({ x: x, y: y, typeIndex: selectedTowerType, cooldown: 0 });
-                    money -= type.cost; updateUI();
-                }
-            }
+        // メニュー生成
+        const menu = document.getElementById('menu');
+        types.forEach((t, i) => {
+            let btn = document.createElement('button');
+            btn.textContent = `${t.name}(${t.cost}G)`;
+            btn.onclick = () => selected = i;
+            menu.appendChild(btn);
         });
 
-        setInterval(() => {
-            if (isPaused || life <= 0) return;
-            gameSeconds++;
-            if (gameSeconds % 120 === 0) { bossLevel++; enemies.push(new Enemy(true, bossLevel)); enemyLevel++; }
-            localStorage.setItem('td_money', money); localStorage.setItem('td_towers', JSON.stringify(towers));
-            updateUI();
-        }, 1000);
+        let selected = 0;
 
-        function gameLoop() {
-            if (!isPaused && life > 0) {
-                ctx.clearRect(0,0,600,400);
-                if (spawnTimer++ > 50) { enemies.push(new Enemy(false)); spawnTimer = 0; }
-                for (let i = enemies.length - 1; i >= 0; i--) {
-                    if (enemies[i].update()) { life--; enemies.splice(i, 1); updateUI(); }
-                    else {
-                        ctx.fillStyle = enemies[i].isBoss ? 'purple' : 'red';
-                        ctx.beginPath(); ctx.arc(enemies[i].x, enemies[i].y, enemies[i].radius, 0, Math.PI*2); ctx.fill();
-                        ctx.fillStyle = 'lime'; ctx.fillRect(enemies[i].x-10, enemies[i].y-15, 20 * (enemies[i].hp/enemies[i].maxHp), 3);
-                    }
-                }
-                for (let t of towers) {
-                    if (t.cooldown > 0) t.cooldown--;
-                    let type = towerTypes[t.typeIndex];
-                    for (let en of enemies) {
-                        if (Math.sqrt((en.x-t.x)**2 + (en.y-t.y)**2) < type.range && t.cooldown <= 0) {
-                            if (type.freeze) en.freezeTimer = 42;
-                            else {
-                                en.hp -= type.damage;
-                                if (type.splash) for(let o of enemies) if(Math.sqrt((o.x-en.x)**2+(o.y-en.y)**2)<50) o.hp-=15;
-                            }
-                            t.cooldown = type.cooldownMax; break;
-                        }
-                    }
-                    ctx.fillStyle = type.color; ctx.beginPath(); ctx.arc(t.x, t.y, 14, 0, Math.PI*2); ctx.fill();
-                }
-            }
-            requestAnimationFrame(gameLoop);
+        function draw() {
+            ctx.clearRect(0, 0, 600, 400);
+            // 通路描画
+            ctx.strokeStyle = '#555'; ctx.lineWidth = 40;
+            ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
+            path.forEach(p => ctx.lineTo(p.x, p.y));
+            ctx.stroke();
+
+            // タワー描画
+            towers.forEach(t => {
+                ctx.fillStyle = types[t.type].color;
+                ctx.beginPath(); ctx.arc(t.x, t.y, 15, 0, Math.PI*2); ctx.fill();
+            });
+            requestAnimationFrame(draw);
         }
-        updateUI(); gameLoop();
+
+        canvas.onclick = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left, y = e.clientY - rect.top;
+            
+            // 通路（幅40）の上に置かせない判定
+            for(let i=0; i<path.length-1; i++){
+                let p1 = path[i], p2 = path[i+1];
+                let dist = Math.abs((p2.y-p1.y)*x - (p2.x-p1.x)*y + p2.x*p1.y - p2.y*p1.x) / Math.sqrt((p2.y-p1.y)**2 + (p2.x-p1.x)**2);
+                if(dist < 30) { alert("道には置けないよ！"); return; }
+            }
+
+            if(money >= types[selected].cost) {
+                towers.push({x, y, type: selected});
+                money -= types[selected].cost;
+                document.getElementById('money').textContent = money;
+            }
+        };
+
+        draw();
     </script>
 </body>
 </html>
