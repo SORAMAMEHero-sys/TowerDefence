@@ -2,12 +2,24 @@
   "background_color": "#ffffff",
   "dir": "ltr",
   "display": "standalone",
-  "name": "そらまめタワーディフェンス⁠",
+  "name": "そらまめタワーディフェンス",
   "orientation": "any",
-  "scope": "/",
+  "scope": "/TowerDefence/",
   "short_name": "そらタワ",
-  "start_url": "/",
+  "start_url": "/TowerDefence/",
   "theme_color": "#ffffff",
-  "id": "com.game.towerdefense⁠",
-  "description": "TikTokerのそらまめが作ったゲームです、apkでやる場合はこれを入れてください！"
+  "id": "/TowerDefence/",
+  "description": "TikTokerのそらまめが作ったゲームです、apkでやる場合はこれを入れてください！",
+  "icons": [
+    {
+      "src": "launchericon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "launchericon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }
