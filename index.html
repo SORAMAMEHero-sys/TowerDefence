@@ -17,7 +17,6 @@
     <div style="margin:10px;">
         <button id="pauseBtn">一時停止</button>
         <button onclick="localStorage.clear(); location.reload();">セーブデータ削除</button>
-        <p style="font-size: 0.8em; color: #aaa;">※クリックで設置、既存のタワーをクリックで売却(確認付き)</p>
     </div>
     <div class="menu" id="menu"></div>
     <canvas id="gameCanvas" width="600" height="400"></canvas>
@@ -30,50 +29,40 @@
         let money = 150, life = 5, gameSeconds = 0, enemyLevel = 1, paused = false;
         let towers = [], enemies = [], bullets = [], selected = 0;
         
-        // ロード処理
         const saved = JSON.parse(localStorage.getItem('td_save'));
-        if(saved) { 
-            money = saved.m; life = saved.l; gameSeconds = saved.s; towers = saved.t; enemyLevel = saved.e; 
-        }
+        if(saved) { money = saved.m; life = saved.l; gameSeconds = saved.s; towers = saved.t; enemyLevel = saved.e; }
 
         const types = [
             { name: "マシンガン", cost: 40, dmg: 8, range: 70, cd: 15, color: "cyan" },
             { name: "スナイパー", cost: 80, dmg: 45, range: 150, cd: 60, color: "orange" },
-            { name: "アイス", cost: 60, dmg: 2, range: 80, cd: 30, color: "blue", slow: true },
+            { name: "アイス", cost: 60, dmg: 2, range: 80, cd: 30, color: "blue", type: "slow" },
             { name: "ボム", cost: 100, dmg: 30, range: 90, cd: 50, color: "red" },
+            { name: "フリーズ", cost: 200, dmg: 0, range: 100, cd: 100, color: "white", type: "freeze" },
             { name: "高級MG", cost: 3000, dmg: 20, range: 100, cd: 5, color: "cyan" },
             { name: "高級Sniper", cost: 3000, dmg: 250, range: 250, cd: 400, color: "gold" }
         ];
 
-        document.getElementById('count').textContent = towers.length;
-        document.getElementById('pauseBtn').onclick = (e) => { 
-            paused = !paused; 
-            e.target.textContent = paused ? "再開" : "一時停止"; 
-        };
+        document.getElementById('pauseBtn').onclick = (e) => { paused = !paused; e.target.textContent = paused ? "再開" : "一時停止"; };
 
-        // タイマー＆オートセーブ
         setInterval(() => {
             if(paused) return;
             gameSeconds++;
             document.getElementById('timer').textContent = gameSeconds;
             if (gameSeconds % 120 === 0) {
                 enemyLevel *= 1.5;
-                enemies.push({x:0, y:100, pathIdx:0, hp: 600 * enemyLevel, maxHp: 600 * enemyLevel, speed: 0.8, isBoss: true});
+                enemies.push({x:0, y:100, pathIdx:0, hp: 600 * enemyLevel, maxHp: 600 * enemyLevel, speed: 0.8, baseSpeed: 0.8, isBoss: true, slowTimer: 0});
             }
             localStorage.setItem('td_save', JSON.stringify({m:money, l:life, s:gameSeconds, t:towers, e:enemyLevel}));
         }, 1000);
 
-        // 1.5秒ごとの敵生成
         setInterval(() => {
-            if(!paused) enemies.push({x:0, y:100, pathIdx:0, hp: 30 * enemyLevel, maxHp: 30 * enemyLevel, speed: 1.5, isBoss: false});
+            if(!paused) enemies.push({x:0, y:100, pathIdx:0, hp: 30 * enemyLevel, maxHp: 30 * enemyLevel, speed: 1.5, baseSpeed: 1.5, isBoss: false, slowTimer: 0});
         }, 1500);
 
-        // メニュー生成
         const menu = document.getElementById('menu');
         types.forEach((t, i) => {
             let b = document.createElement('button');
             b.textContent = `${t.name}(${t.cost}G)`;
-            if(i === 0) b.classList.add('selected');
             b.onclick = () => { selected = i; document.querySelectorAll('button').forEach(btn => btn.classList.remove('selected')); b.classList.add('selected'); };
             menu.appendChild(b);
         });
@@ -81,20 +70,21 @@
         function loop() {
             if(!paused) {
                 ctx.clearRect(0,0,600,400);
-                // パス描画
                 ctx.strokeStyle = '#555'; ctx.lineWidth = 40;
                 ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
                 path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
-                // 弾の更新
                 bullets.forEach((b, i) => {
                     ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
                     b.x += (b.tx - b.x) * 0.2; b.y += (b.ty - b.y) * 0.2;
                     if(Math.hypot(b.x-b.tx, b.y-b.ty) < 5) bullets.splice(i, 1);
                 });
 
-                // 敵の更新
                 enemies.forEach((en, i) => {
+                    // スロー処理更新
+                    if(en.slowTimer > 0) { en.speed = en.baseSpeed * 0.5; en.slowTimer--; }
+                    else { en.speed = en.baseSpeed; }
+
                     let p = path[en.pathIdx + 1];
                     if(!p) return;
                     let dx = p.x - en.x, dy = p.y - en.y, dist = Math.sqrt(dx*dx+dy*dy);
@@ -105,21 +95,25 @@
                     
                     ctx.fillStyle = en.isBoss ? 'purple' : 'red';
                     ctx.beginPath(); ctx.arc(en.x, en.y, en.isBoss ? 15 : 8, 0, Math.PI*2); ctx.fill();
-                    ctx.fillStyle = 'white'; ctx.fillRect(en.x-10, en.y-20, 20, 4);
                     ctx.fillStyle = 'lime'; ctx.fillRect(en.x-10, en.y-20, 20 * (en.hp/en.maxHp), 4);
                 });
 
-                // タワーの更新
                 towers.forEach(t => {
                     let type = types[t.type];
                     ctx.fillStyle = type.color; ctx.beginPath(); ctx.arc(t.x, t.y, 12, 0, Math.PI*2); ctx.fill();
                     if(t.cd > 0) t.cd--;
                     else {
-                        let target = enemies.find(en => Math.hypot(en.x-t.x, en.y-t.y) < type.range);
-                        if(target) {
-                            bullets.push({x: t.x, y: t.y, tx: target.x, ty: target.y});
-                            target.hp -= type.dmg; t.cd = type.cd;
-                            if(target.hp <= 0) { money += (target.isBoss ? 500 : 20); enemies.splice(enemies.indexOf(target), 1); document.getElementById('money').textContent = money; }
+                        if(type.type === "freeze") {
+                            enemies.forEach(en => { if(Math.hypot(en.x-t.x, en.y-t.y) < type.range) en.speed = 0; });
+                            t.cd = type.cd;
+                        } else {
+                            let target = enemies.find(en => Math.hypot(en.x-t.x, en.y-t.y) < type.range);
+                            if(target) {
+                                bullets.push({x: t.x, y: t.y, tx: target.x, ty: target.y});
+                                target.hp -= type.dmg; t.cd = type.cd;
+                                if(type.type === "slow") target.slowTimer = 60;
+                                if(target.hp <= 0) { money += (target.isBoss ? 500 : 20); enemies.splice(enemies.indexOf(target), 1); document.getElementById('money').textContent = money; }
+                            }
                         }
                     }
                 });
@@ -131,28 +125,14 @@
         canvas.onclick = (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left, y = e.clientY - rect.top;
-            
-            // 売却処理
             const idx = towers.findIndex(t => Math.hypot(t.x-x, t.y-y) < 20);
             if(idx !== -1) {
-                if(confirm(types[towers[idx].type].name + " を売却して半分のお金を取り戻す？")) {
-                    money += Math.floor(types[towers[idx].type].cost * 0.5);
-                    towers.splice(idx, 1);
-                    document.getElementById('money').textContent = money;
-                    document.getElementById('count').textContent = towers.length;
-                }
-                return;
+                if(confirm("売却しますか？")) { money += Math.floor(types[towers[idx].type].cost * 0.5); towers.splice(idx, 1); }
+            } else if(money >= types[selected].cost && towers.length < 30) {
+                towers.push({x, y, type: selected, cd: 0}); money -= types[selected].cost;
             }
-
-            // 建設処理
-            if(money >= types[selected].cost && towers.length < 30) {
-                towers.push({x, y, type: selected, cd: 0});
-                money -= types[selected].cost;
-                document.getElementById('money').textContent = money;
-                document.getElementById('count').textContent = towers.length;
-            } else if(towers.length >= 30) {
-                alert("タワーは30個までだよ！");
-            }
+            document.getElementById('money').textContent = money;
+            document.getElementById('count').textContent = towers.length;
         };
         loop();
     </script>
