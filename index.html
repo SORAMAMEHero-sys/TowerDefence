@@ -21,7 +21,7 @@
             margin: 0 auto;
         }
         .info {
-            font-size: 16px;
+            font-size: 15px;
             margin-bottom: 5px;
         }
         .menu, .controls {
@@ -56,6 +56,49 @@
             height: 15px;
             margin-bottom: 5px;
         }
+        /* ショップ画面のスタイル */
+        #shopModal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #222;
+            border: 3px solid #00bcd4;
+            padding: 20px;
+            z-index: 100;
+            width: 90%;
+            max-width: 400px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+        #shopModal h2 {
+            margin-top: 0;
+            color: #00bcd4;
+        }
+        .shop-item {
+            background: #333;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: left;
+            font-size: 14px;
+        }
+        .shop-item button {
+            float: right;
+            background-color: #4caf50;
+            margin-top: -3px;
+        }
+        #shopOpenBtn {
+            background-color: #9c27b0;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 10px 20px;
+            margin: 10px auto;
+            display: block;
+            width: 80%;
+            max-width: 300px;
+        }
     </style>
 </head>
 <body>
@@ -64,7 +107,8 @@
     <div class="info">
         所持金: <span id="money">150</span>G | 
         ライフ: <span id="life">5</span> | 
-        タワー数: <span id="towerCount">0</span>/30 | 
+        BP: <span id="bp">0</span>BP<br>
+        タワー数: <span id="towerCount">0</span>/<span id="maxTowerLimit">30</span> | 
         経過時間: <span id="timer">0</span>秒
     </div>
     <div id="saveMsg"></div>
@@ -80,23 +124,58 @@
         <button id="btn-sell" onclick="selectSellMode()" class="sell-mode">🗑️ タワーを売る</button>
     </div>
 
-    <!-- 一時停止ボタン -->
+    <!-- 一時停止ボタンなど -->
     <div class="controls">
         <button id="pauseBtn" onclick="togglePause()">⏸️ 一時停止</button>
         <button onclick="resetGameDataCompletely()" style="background-color: #722;">🔄 セーブ初期化</button>
     </div>
 
+    <!-- ご要望の赤い丸の位置に配置したショップボタン -->
+    <button id="shopOpenBtn" onclick="toggleShop(true)">🛒 ショップを開く</button>
+
     <canvas id="gameCanvas" width="600" height="400"></canvas>
+
+    <!-- ショップモーダル画面 -->
+    <div id="shopModal">
+        <h2>🛒 BPショップ</h2>
+        <p>保有BP: <span id="shopBp">0</span> BP</p>
+        
+        <div class="shop-item">
+            <strong>設置上限アップ</strong> (<span id="limitLevel">0</span>/20)<br>
+            上限が1増えます（最大50個）<br>
+            <span style="color:gold;">5 BP</span> <button onclick="buyUpgrade('limit')">購入</button>
+        </div>
+
+        <div class="shop-item">
+            <strong>ボス特効ダメージ</strong> (<span id="bossDmgLevel">0</span>/10)<br>
+            ボスへのダメージ ×1.25倍<br>
+            <span style="color:gold;">10 BP</span> <button onclick="buyUpgrade('bossDmg')">購入</button>
+        </div>
+
+        <div class="shop-item">
+            <strong>破壊光線解放</strong> (<span id="rayStatus">未解放</span>)<br>
+            3000G・30秒ごとに3000ダメ<br>
+            <span style="color:gold;">30 BP</span> <button id="rayBtn" onclick="buyUpgrade('ray')">購入</button>
+        </div>
+
+        <button onclick="toggleShop(false)" style="background-color: #777; width: 100%; margin-top: 10px;">閉じる（ゲーム再開）</button>
+    </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // セーブデータの読み込み処理
+        // ゲーム内データの読み込み
         let money = localStorage.getItem('td_money') ? parseInt(localStorage.getItem('td_money')) : 150;
         let life = localStorage.getItem('td_life') ? parseInt(localStorage.getItem('td_life')) : 5;
         let gameSeconds = localStorage.getItem('td_seconds') ? parseInt(localStorage.getItem('td_seconds')) : 0;
         
+        // 永続データ（ゲームオーバーでも消えないBPとショップ購入要素）
+        let bp = localStorage.getItem('td_bp') ? parseInt(localStorage.getItem('td_bp')) : 0;
+        let upgradeLimitCount = localStorage.getItem('td_up_limit') ? parseInt(localStorage.getItem('td_up_limit')) : 0;
+        let upgradeBossDmgCount = localStorage.getItem('td_up_bossDmg') ? parseInt(localStorage.getItem('td_up_bossDmg')) : 0;
+        let hasDestructionRay = localStorage.getItem('td_up_ray') === 'true';
+
         let towers = [];
         let savedTowers = localStorage.getItem('td_towers');
         if (savedTowers) {
@@ -104,8 +183,13 @@
         }
 
         let isPaused = false;
+        let isShopOpen = false;
         let selectedTowerType = 0; 
         let isSellMode = false;
+
+        // 破壊光線用タイマー（30秒ごと）
+        let rayTimer = 0;
+        let rayEffectTimer = 0; // 光線エフェクト用
 
         // タワー種類の定義
         const towerTypes = [
@@ -117,7 +201,6 @@
             { name: "高級狙撃", cost: 800, range: 250, damage: 150, cooldownMax: 80, color: "gold" }
         ];
 
-        // マップの経路定義
         const path = [
             {x: 0, y: 100},
             {x: 200, y: 100},
@@ -129,9 +212,18 @@
 
         let enemies = [];
         let spawnTimer = 0;
-        let waveLevel = 0; // 経過時間とともに上がっていく難度レベル
+        let waveLevel = 0;
 
-        // 敵クラスの定義（レベルに応じてHP・報酬が1.5倍ずつインフレ）
+        // 上限計算（基本30 ＋ アップグレード数、最大50）
+        function getMaxTowerLimit() {
+            return Math.min(50, 30 + upgradeLimitCount);
+        }
+
+        // ボス特効倍率計算 (1.25のn乗)
+        function getBossDamageMultiplier() {
+            return Math.pow(1.25, upgradeBossDmgCount);
+        }
+
         class Enemy {
             constructor(isBoss = false, level = 0) {
                 this.x = path[0].x;
@@ -140,7 +232,6 @@
                 this.isBoss = isBoss;
                 this.level = level;
 
-                // 1.5倍ずつのスケーリング計算 (Math.pow(1.5, level))
                 let scale = Math.pow(1.5, level);
 
                 if (isBoss) {
@@ -213,7 +304,6 @@
                     ctx.stroke();
                 }
 
-                // 体力ゲージ描画
                 ctx.fillStyle = 'black';
                 ctx.fillRect(this.x - 15, this.y - (this.radius + 8), 30, 4);
                 ctx.fillStyle = this.isBoss ? 'magenta' : 'lime';
@@ -221,14 +311,12 @@
             }
         }
 
-        // タワーの描画と攻撃処理
         function updateAndDrawTowers() {
             for (let tower of towers) {
                 if (tower.cooldown > 0) tower.cooldown--;
 
                 let type = towerTypes[tower.typeIndex];
 
-                // フリーズしていない敵を優先して狙う
                 let target = null;
                 for (let enemy of enemies) {
                     let dist = Math.sqrt((enemy.x - tower.x)**2 + (enemy.y - tower.y)**2);
@@ -249,7 +337,13 @@
                 }
 
                 if (target && tower.cooldown === 0) {
-                    target.hp -= type.damage;
+                    let finalDmg = type.damage;
+                    // ボス特効の適用
+                    if (target.isBoss) {
+                        finalDmg *= getBossDamageMultiplier();
+                    }
+
+                    target.hp -= finalDmg;
                     if (type.slow) target.slowTimer = 90;
                     if (type.freeze) target.freezeTimer = 60;
                     tower.cooldown = type.cooldownMax;
@@ -270,6 +364,45 @@
                 ctx.lineWidth = 1;
                 ctx.stroke();
             }
+        }
+
+        // ショップの開閉処理
+        function toggleShop(open) {
+            isShopOpen = open;
+            isPaused = open; // ショップを開いている時は自動一時停止
+            document.getElementById('shopModal').style.display = open ? 'block' : 'none';
+            document.getElementById('pauseBtn').textContent = isPaused ? "▶️ 再開" : "⏸️ 一時停止";
+            updateUI();
+        }
+
+        // アップグレード購入処理
+        function buyUpgrade(type) {
+            if (type === 'limit') {
+                if (upgradeLimitCount >= 20) { alert("上限に達しています！"); return; }
+                if (bp >= 5) {
+                    bp -= 5;
+                    upgradeLimitCount++;
+                    localStorage.setItem('td_bp', bp);
+                    localStorage.setItem('td_up_limit', upgradeLimitCount);
+                } else { alert("BPが足りません！"); }
+            } else if (type === 'bossDmg') {
+                if (upgradeBossDmgCount >= 10) { alert("上限に達しています！"); return; }
+                if (bp >= 10) {
+                    bp -= 10;
+                    upgradeBossDmgCount++;
+                    localStorage.setItem('td_bp', bp);
+                    localStorage.setItem('td_up_bossDmg', upgradeBossDmgCount);
+                } else { alert("BPが足りません！"); }
+            } else if (type === 'ray') {
+                if (hasDestructionRay) { alert("すでに解放済みです！"); return; }
+                if (bp >= 30) {
+                    bp -= 30;
+                    hasDestructionRay = true;
+                    localStorage.setItem('td_bp', bp);
+                    localStorage.setItem('td_up_ray', true);
+                } else { alert("BPが足りません！"); }
+            }
+            updateUI();
         }
 
         function selectTower(index) {
@@ -294,25 +427,27 @@
         }
 
         function togglePause() {
+            if (isShopOpen) return; // ショップ中はポーズ切り替え不可
             isPaused = !isPaused;
             document.getElementById('pauseBtn').textContent = isPaused ? "▶️ 再開" : "⏸️ 一時停止";
         }
 
         function resetGameDataCompletely() {
-            if (confirm("セーブデータを初期化して最初からやり直しますか？")) {
+            if (confirm("【警告】BPやショップ購入品も含めて完全に初期化しますか？")) {
                 localStorage.clear();
                 location.reload();
             }
         }
 
         function resetGame() {
-            localStorage.clear();
+            // ゲームオーバー時は所持金やライフ、タワーはリセット（BPは維持）
             money = 150;
             life = 5;
             gameSeconds = 0;
             enemies = [];
             towers = [];
             waveLevel = 0;
+            rayTimer = 0;
             updateUI();
         }
 
@@ -321,10 +456,22 @@
             document.getElementById('life').textContent = life;
             document.getElementById('timer').textContent = gameSeconds;
             document.getElementById('towerCount').textContent = towers.length;
+            document.getElementById('maxTowerLimit').textContent = getMaxTowerLimit();
+            document.getElementById('bp').textContent = bp;
+            document.getElementById('shopBp').textContent = bp;
+
+            // ショップ画面の表示更新
+            document.getElementById('limitLevel').textContent = upgradeLimitCount;
+            document.getElementById('bossDmgLevel').textContent = upgradeBossDmgCount;
+            if (hasDestructionRay) {
+                document.getElementById('rayStatus').textContent = "解放済";
+                document.getElementById('rayBtn').disabled = true;
+                document.getElementById('rayBtn').style.backgroundColor = '#555';
+            }
         }
 
         canvas.addEventListener('click', (e) => {
-            if (isPaused || life <= 0) return;
+            if (isPaused || isShopOpen || life <= 0) return;
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
@@ -351,8 +498,8 @@
                     }
                 }
             } else {
-                if (towers.length >= 30) {
-                    alert("タワーの上限（30個）に達しています！");
+                if (towers.length >= getMaxTowerLimit()) {
+                    alert(`タワーの上限（${getMaxTowerLimit()}個）に達しています！`);
                     return;
                 }
 
@@ -373,21 +520,39 @@
             localStorage.setItem('td_life', life);
             localStorage.setItem('td_seconds', gameSeconds);
             localStorage.setItem('td_towers', JSON.stringify(towers));
+            localStorage.setItem('td_bp', bp);
             
             const msg = document.getElementById('saveMsg');
             msg.textContent = "💾 オートセーブしました";
             setTimeout(() => { msg.textContent = ""; }, 1000);
         }
 
-        // 20秒ごとにボス出現 ＆ 難易度（HP等）が1.5倍にアップ
+        // 毎秒の処理
         setInterval(() => {
-            if (!isPaused && life > 0) {
+            if (!isPaused && !isShopOpen && life > 0) {
                 gameSeconds++;
+                
+                // 破壊光線解放時の処理（3000G所持していれば30秒ごとに3000ダメージ）
+                if (hasDestructionRay) {
+                    rayTimer++;
+                    if (rayTimer >= 30) {
+                        rayTimer = 0;
+                        if (money >= 3000) {
+                            money -= 3000;
+                            rayEffectTimer = 20; // 20フレーム光線を描画
+                            // 全ての敵に3000ダメージ
+                            for (let enemy of enemies) {
+                                enemy.hp -= 3000;
+                            }
+                        }
+                    }
+                }
+
                 updateUI();
 
                 if (gameSeconds % 20 === 0) {
                     waveLevel++;
-                    enemies.push(new Enemy(true, waveLevel)); // ボス出現
+                    enemies.push(new Enemy(true, waveLevel));
                 }
 
                 saveGameData();
@@ -395,7 +560,7 @@
         }, 1000);
 
         function gameLoop() {
-            if (!isPaused && life > 0) {
+            if (!isPaused && !isShopOpen && life > 0) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 ctx.strokeStyle = '#555';
@@ -407,8 +572,15 @@
                 }
                 ctx.stroke();
 
+                // 破壊光線発動中の演出
+                if (rayEffectTimer > 0) {
+                    rayEffectTimer--;
+                    ctx.strokeStyle = 'magenta';
+                    ctx.lineWidth = 8;
+                    ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+                }
+
                 spawnTimer++;
-                // 雑魚敵も波が進むごとに少し早く出現したり、HPがインフレする
                 let spawnInterval = Math.max(30, 80 - (waveLevel * 5));
                 if (spawnTimer > spawnInterval) {
                     enemies.push(new Enemy(false, waveLevel));
@@ -419,7 +591,11 @@
                     let reachedGoal = enemies[i].update();
                     if (reachedGoal || enemies[i].hp <= 0) {
                         if (enemies[i].hp <= 0) {
-                            money += enemies[i].reward; // インフレした報酬を獲得
+                            money += enemies[i].reward;
+                            if (enemies[i].isBoss) {
+                                bp++; // ボスを倒すとBP獲得！
+                                saveGameData();
+                            }
                             updateUI();
                         }
                         enemies.splice(i, 1);
