@@ -107,7 +107,7 @@
         let selectedTowerType = 0; 
         let isSellMode = false;
 
-        // タワー種類の定義（フリーズを復帰）
+        // タワー種類の定義
         const towerTypes = [
             { name: "マシンガン", cost: 40, range: 70, damage: 8, cooldownMax: 15, color: "cyan" },
             { name: "スナイパー", cost: 80, range: 150, damage: 45, cooldownMax: 60, color: "orange" },
@@ -157,7 +157,7 @@
             }
 
             update() {
-                // フリーズ中の処理（完全停止）
+                // フリーズ中の処理
                 if (this.freezeTimer > 0) {
                     this.freezeTimer--;
                     return false;
@@ -218,31 +218,48 @@
             }
         }
 
-        // タワーの描画と攻撃処理
+        // タワーの描画と攻撃処理（フリーズ中の敵を避け、動いている敵を優先するよう修正）
         function updateAndDrawTowers() {
             for (let tower of towers) {
                 if (tower.cooldown > 0) tower.cooldown--;
 
                 let type = towerTypes[tower.typeIndex];
 
-                // 攻撃対象を探して撃つ
+                // 1. まず「フリーズしていない（動いている）敵」を射程内から探す
+                let target = null;
                 for (let enemy of enemies) {
                     let dist = Math.sqrt((enemy.x - tower.x)**2 + (enemy.y - tower.y)**2);
-                    if (dist < type.range && tower.cooldown === 0) {
-                        enemy.hp -= type.damage;
-                        if (type.slow) enemy.slowTimer = 90;
-                        if (type.freeze) enemy.freezeTimer = 60; // 1秒間完全フリーズ
-                        tower.cooldown = type.cooldownMax;
-
-                        // 攻撃エフェクト（弾の軌跡線）
-                        ctx.strokeStyle = type.color;
-                        ctx.lineWidth = 2;
-                        ctx.beginPath();
-                        ctx.moveTo(tower.x, tower.y);
-                        ctx.lineTo(enemy.x, enemy.y);
-                        ctx.stroke();
+                    if (dist < type.range && enemy.freezeTimer === 0) {
+                        target = enemy;
                         break;
                     }
+                }
+
+                // 2. もし動いている敵が射程内にいなければ、通常の敵（フリーズ中含む）を狙う
+                if (!target) {
+                    for (let enemy of enemies) {
+                        let dist = Math.sqrt((enemy.x - tower.x)**2 + (enemy.y - tower.y)**2);
+                        if (dist < type.range) {
+                            target = enemy;
+                            break;
+                        }
+                    }
+                }
+
+                // 攻撃実行
+                if (target && tower.cooldown === 0) {
+                    target.hp -= type.damage;
+                    if (type.slow) target.slowTimer = 90;
+                    if (type.freeze) target.freezeTimer = 60; // 1秒間完全フリーズ
+                    tower.cooldown = type.cooldownMax;
+
+                    // 攻撃エフェクト（弾の軌跡線）
+                    ctx.strokeStyle = type.color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(tower.x, tower.y);
+                    ctx.lineTo(target.x, target.y);
+                    ctx.stroke();
                 }
 
                 // タワー本体の描画
