@@ -1,0 +1,13 @@
+{
+  "background_color": "#ffffff",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "そらまめタワーディフェンス",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "ソラタワ",
+  "start_url": "/",
+  "theme_color": "#ffffff",
+  "id": "towerdefense",
+  "description": "底辺TikTokrが作ったタワーディフェンスです、めちゃシンプルで楽しいよー"
+}
