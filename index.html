@@ -13,10 +13,11 @@
 </head>
 <body>
     <h1>🛡️ 防衛戦 🛡️</h1>
-    <div>金:<span id="money">150</span> | ライフ:<span id="life">5</span> | 時間:<span id="timer">0</span>秒</div>
+    <div>金:<span id="money">150</span> | ライフ:<span id="life">5</span> | タワー:<span id="count">0</span>/30 | 時間:<span id="timer">0</span>秒</div>
     <div style="margin:10px;">
         <button id="pauseBtn">一時停止</button>
         <button onclick="localStorage.clear(); location.reload();">セーブデータ削除</button>
+        <p style="font-size: 0.8em; color: #aaa;">※クリックで設置、既存のタワーをクリックで売却(確認付き)</p>
     </div>
     <div class="menu" id="menu"></div>
     <canvas id="gameCanvas" width="600" height="400"></canvas>
@@ -31,7 +32,9 @@
         
         // ロード処理
         const saved = JSON.parse(localStorage.getItem('td_save'));
-        if(saved) { money = saved.m; life = saved.l; gameSeconds = saved.s; towers = saved.t; enemyLevel = saved.e; }
+        if(saved) { 
+            money = saved.m; life = saved.l; gameSeconds = saved.s; towers = saved.t; enemyLevel = saved.e; 
+        }
 
         const types = [
             { name: "マシンガン", cost: 40, dmg: 8, range: 70, cd: 15, color: "cyan" },
@@ -42,6 +45,7 @@
             { name: "高級Sniper", cost: 3000, dmg: 250, range: 250, cd: 400, color: "gold" }
         ];
 
+        document.getElementById('count').textContent = towers.length;
         document.getElementById('pauseBtn').onclick = (e) => { 
             paused = !paused; 
             e.target.textContent = paused ? "再開" : "一時停止"; 
@@ -59,14 +63,17 @@
             localStorage.setItem('td_save', JSON.stringify({m:money, l:life, s:gameSeconds, t:towers, e:enemyLevel}));
         }, 1000);
 
+        // 1.5秒ごとの敵生成
         setInterval(() => {
             if(!paused) enemies.push({x:0, y:100, pathIdx:0, hp: 30 * enemyLevel, maxHp: 30 * enemyLevel, speed: 1.5, isBoss: false});
         }, 1500);
 
+        // メニュー生成
         const menu = document.getElementById('menu');
         types.forEach((t, i) => {
             let b = document.createElement('button');
             b.textContent = `${t.name}(${t.cost}G)`;
+            if(i === 0) b.classList.add('selected');
             b.onclick = () => { selected = i; document.querySelectorAll('button').forEach(btn => btn.classList.remove('selected')); b.classList.add('selected'); };
             menu.appendChild(b);
         });
@@ -74,16 +81,19 @@
         function loop() {
             if(!paused) {
                 ctx.clearRect(0,0,600,400);
+                // パス描画
                 ctx.strokeStyle = '#555'; ctx.lineWidth = 40;
                 ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
                 path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
+                // 弾の更新
                 bullets.forEach((b, i) => {
                     ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
                     b.x += (b.tx - b.x) * 0.2; b.y += (b.ty - b.y) * 0.2;
                     if(Math.hypot(b.x-b.tx, b.y-b.ty) < 5) bullets.splice(i, 1);
                 });
 
+                // 敵の更新
                 enemies.forEach((en, i) => {
                     let p = path[en.pathIdx + 1];
                     if(!p) return;
@@ -93,13 +103,13 @@
                         if(en.pathIdx >= path.length-1) { life--; enemies.splice(i, 1); document.getElementById('life').textContent = life; }
                     } else { en.x += (dx/dist)*en.speed; en.y += (dy/dist)*en.speed; }
                     
-                    // 敵描画と体力ゲージ
                     ctx.fillStyle = en.isBoss ? 'purple' : 'red';
                     ctx.beginPath(); ctx.arc(en.x, en.y, en.isBoss ? 15 : 8, 0, Math.PI*2); ctx.fill();
                     ctx.fillStyle = 'white'; ctx.fillRect(en.x-10, en.y-20, 20, 4);
                     ctx.fillStyle = 'lime'; ctx.fillRect(en.x-10, en.y-20, 20 * (en.hp/en.maxHp), 4);
                 });
 
+                // タワーの更新
                 towers.forEach(t => {
                     let type = types[t.type];
                     ctx.fillStyle = type.color; ctx.beginPath(); ctx.arc(t.x, t.y, 12, 0, Math.PI*2); ctx.fill();
@@ -121,10 +131,27 @@
         canvas.onclick = (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left, y = e.clientY - rect.top;
-            if(money >= types[selected].cost) {
+            
+            // 売却処理
+            const idx = towers.findIndex(t => Math.hypot(t.x-x, t.y-y) < 20);
+            if(idx !== -1) {
+                if(confirm(types[towers[idx].type].name + " を売却して半分のお金を取り戻す？")) {
+                    money += Math.floor(types[towers[idx].type].cost * 0.5);
+                    towers.splice(idx, 1);
+                    document.getElementById('money').textContent = money;
+                    document.getElementById('count').textContent = towers.length;
+                }
+                return;
+            }
+
+            // 建設処理
+            if(money >= types[selected].cost && towers.length < 30) {
                 towers.push({x, y, type: selected, cd: 0});
                 money -= types[selected].cost;
                 document.getElementById('money').textContent = money;
+                document.getElementById('count').textContent = towers.length;
+            } else if(towers.length >= 30) {
+                alert("タワーは30個までだよ！");
             }
         };
         loop();
