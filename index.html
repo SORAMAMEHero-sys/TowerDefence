@@ -165,7 +165,7 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // ゲーム内データの読み込み
+        // ゲーム内データの読み込み（通常データ）
         let money = localStorage.getItem('td_money') ? parseInt(localStorage.getItem('td_money')) : 150;
         let life = localStorage.getItem('td_life') ? parseInt(localStorage.getItem('td_life')) : 5;
         let gameSeconds = localStorage.getItem('td_seconds') ? parseInt(localStorage.getItem('td_seconds')) : 0;
@@ -338,7 +338,6 @@
 
                 if (target && tower.cooldown === 0) {
                     let finalDmg = type.damage;
-                    // ボス特効の適用
                     if (target.isBoss) {
                         finalDmg *= getBossDamageMultiplier();
                     }
@@ -366,16 +365,14 @@
             }
         }
 
-        // ショップの開閉処理
         function toggleShop(open) {
             isShopOpen = open;
-            isPaused = open; // ショップを開いている時は自動一時停止
+            isPaused = open;
             document.getElementById('shopModal').style.display = open ? 'block' : 'none';
             document.getElementById('pauseBtn').textContent = isPaused ? "▶️ 再開" : "⏸️ 一時停止";
             updateUI();
         }
 
-        // アップグレード購入処理
         function buyUpgrade(type) {
             if (type === 'limit') {
                 if (upgradeLimitCount >= 20) { alert("上限に達しています！"); return; }
@@ -427,7 +424,7 @@
         }
 
         function togglePause() {
-            if (isShopOpen) return; // ショップ中はポーズ切り替え不可
+            if (isShopOpen) return;
             isPaused = !isPaused;
             document.getElementById('pauseBtn').textContent = isPaused ? "▶️ 再開" : "⏸️ 一時停止";
         }
@@ -439,8 +436,8 @@
             }
         }
 
+        // ゲームオーバー時のリセット（BPは維持、他はお金150・ライフ5・タワー空にしてセーブをクリア）
         function resetGame() {
-            // ゲームオーバー時は所持金やライフ、タワーはリセット（BPは維持）
             money = 150;
             life = 5;
             gameSeconds = 0;
@@ -448,6 +445,13 @@
             towers = [];
             waveLevel = 0;
             rayTimer = 0;
+            
+            // プレイ中のセーブデータだけ削除してBPは残す
+            localStorage.removeItem('td_money');
+            localStorage.removeItem('td_life');
+            localStorage.removeItem('td_seconds');
+            localStorage.removeItem('td_towers');
+            
             updateUI();
         }
 
@@ -460,7 +464,6 @@
             document.getElementById('bp').textContent = bp;
             document.getElementById('shopBp').textContent = bp;
 
-            // ショップ画面の表示更新
             document.getElementById('limitLevel').textContent = upgradeLimitCount;
             document.getElementById('bossDmgLevel').textContent = upgradeBossDmgCount;
             if (hasDestructionRay) {
@@ -527,20 +530,17 @@
             setTimeout(() => { msg.textContent = ""; }, 1000);
         }
 
-        // 毎秒の処理
         setInterval(() => {
             if (!isPaused && !isShopOpen && life > 0) {
                 gameSeconds++;
                 
-                // 破壊光線解放時の処理（3000G所持していれば30秒ごとに3000ダメージ）
                 if (hasDestructionRay) {
                     rayTimer++;
                     if (rayTimer >= 30) {
                         rayTimer = 0;
                         if (money >= 3000) {
                             money -= 3000;
-                            rayEffectTimer = 20; // 20フレーム光線を描画
-                            // 全ての敵に3000ダメージ
+                            rayEffectTimer = 20;
                             for (let enemy of enemies) {
                                 enemy.hp -= 3000;
                             }
@@ -572,7 +572,6 @@
                 }
                 ctx.stroke();
 
-                // 破壊光線発動中の演出
                 if (rayEffectTimer > 0) {
                     rayEffectTimer--;
                     ctx.strokeStyle = 'magenta';
@@ -593,7 +592,7 @@
                         if (enemies[i].hp <= 0) {
                             money += enemies[i].reward;
                             if (enemies[i].isBoss) {
-                                bp++; // ボスを倒すとBP獲得！
+                                bp++;
                                 saveGameData();
                             }
                             updateUI();
@@ -619,7 +618,8 @@
                 
                 canvas.onclick = () => {
                     resetGame();
-                    location.reload();
+                    // ページリロードせず、そのままゲーム画面を再開させる
+                    canvas.onclick = null; // クリックイベントを元に戻す
                 };
             }
 
