@@ -69,13 +69,14 @@
     </div>
     <div id="saveMsg"></div>
 
-    <!-- タワー選択メニュー（5種類 ＋ 売却モード） -->
+    <!-- タワー選択メニュー（6種類 ＋ 売却モード） -->
     <div class="menu">
         <button id="btn-0" onclick="selectTower(0)" class="selected">マシンガン (40G)</button>
         <button id="btn-1" onclick="selectTower(1)">スナイパー (80G)</button>
         <button id="btn-2" onclick="selectTower(2)">アイス (60G)</button>
-        <button id="btn-3" onclick="selectTower(3)">高級MG (500G)</button>
-        <button id="btn-4" onclick="selectTower(4)">高級狙撃 (800G)</button>
+        <button id="btn-3" onclick="selectTower(3)">フリーズ (200G)</button>
+        <button id="btn-4" onclick="selectTower(4)">高級MG (500G)</button>
+        <button id="btn-5" onclick="selectTower(5)">高級狙撃 (800G)</button>
         <button id="btn-sell" onclick="selectSellMode()" class="sell-mode">🗑️ タワーを売る</button>
     </div>
 
@@ -106,11 +107,12 @@
         let selectedTowerType = 0; 
         let isSellMode = false;
 
-        // タワー種類の定義（ボムを削除しインデックスを再整理）
+        // タワー種類の定義（フリーズを復帰）
         const towerTypes = [
             { name: "マシンガン", cost: 40, range: 70, damage: 8, cooldownMax: 15, color: "cyan" },
             { name: "スナイパー", cost: 80, range: 150, damage: 45, cooldownMax: 60, color: "orange" },
             { name: "アイス", cost: 60, range: 80, damage: 5, cooldownMax: 30, color: "blue", slow: true },
+            { name: "フリーズ", cost: 200, range: 100, damage: 0, cooldownMax: 90, color: "white", freeze: true },
             { name: "高級MG", cost: 500, range: 100, damage: 20, cooldownMax: 5, color: "lime" },
             { name: "高級狙撃", cost: 800, range: 250, damage: 150, cooldownMax: 80, color: "gold" }
         ];
@@ -151,9 +153,17 @@
                 }
                 this.originalSpeed = this.speed;
                 this.slowTimer = 0;
+                this.freezeTimer = 0;
             }
 
             update() {
+                // フリーズ中の処理（完全停止）
+                if (this.freezeTimer > 0) {
+                    this.freezeTimer--;
+                    return false;
+                }
+
+                // アイスによる減速処理
                 if (this.slowTimer > 0) {
                     this.speed = this.originalSpeed * 0.5;
                     this.slowTimer--;
@@ -190,7 +200,11 @@
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fill();
 
-                if (this.isBoss) {
+                if (this.freezeTimer > 0) {
+                    ctx.strokeStyle = 'cyan';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                } else if (this.isBoss) {
                     ctx.strokeStyle = 'gold';
                     ctx.lineWidth = 2;
                     ctx.stroke();
@@ -217,6 +231,7 @@
                     if (dist < type.range && tower.cooldown === 0) {
                         enemy.hp -= type.damage;
                         if (type.slow) enemy.slowTimer = 90;
+                        if (type.freeze) enemy.freezeTimer = 60; // 1秒間完全フリーズ
                         tower.cooldown = type.cooldownMax;
 
                         // 攻撃エフェクト（弾の軌跡線）
