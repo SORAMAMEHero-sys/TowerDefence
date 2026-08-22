@@ -1,14 +1,13 @@
 {
   "name": "そらまめタワーディフェンス",
   "short_name": "そらタワ",
-  "description": "TikTokerのそらまめが作ったタワーディフェンスゲームです。",
+  "description": "TikTokerのそらまめが作ったタワーディフェンスゲームです",
   "start_url": "./",
   "scope": "./",
-  "id": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#222222",
-  "theme_color": "#222222",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "./launchericon-192x192.png",
